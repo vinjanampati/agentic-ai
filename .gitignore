@@ -1,0 +1,17 @@
+# Maven build output
+target/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
