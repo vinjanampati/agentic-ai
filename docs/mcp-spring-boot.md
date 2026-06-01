@@ -389,6 +389,56 @@ wiring between the agent and Spring Boot.
 
 ---
 
+## Advantage of MCP vs Direct Agent Calls to Spring Boot
+
+The honest answer: **for one agent talking to one backend, there is no advantage**.
+The current `httpx` approach is simpler and has fewer moving parts.
+
+MCP earns its keep in these situations:
+
+**Multiple agents sharing the same backend**
+
+Without MCP, every agent duplicates the Spring Boot HTTP logic independently:
+```
+Agent A  →  own httpx calls  →  Spring Boot
+Agent B  →  own httpx calls  →  Spring Boot
+Agent C  →  own httpx calls  →  Spring Boot
+```
+
+With MCP, one server, all agents connect to it:
+```
+Agent A  ─┐
+Agent B  ──┤  MCP Server  →  Spring Boot
+Agent C  ─┘
+```
+Change the Spring Boot API once — fix it in the MCP server and all agents get it automatically.
+
+**Plugging in multiple data sources without rewriting the agent**
+```
+Agent
+  │ MCP
+  ├── Spring Boot MCP server
+  ├── PostgreSQL MCP server
+  ├── S3 file MCP server
+  └── GitHub MCP server
+```
+The agent doesn't care what's behind each MCP server. Add data sources by connecting more servers, not by changing agent code.
+
+**Reuse outside your agent**
+
+An MCP server is immediately compatible with Claude Desktop, Cursor, and any other MCP client — not just your A2A agent. Your Spring Boot tools become available across your entire AI toolchain for free.
+
+| Scenario | Use |
+|---|---|
+| One agent, one backend | Direct HTTP — simpler |
+| Multiple agents sharing the same backend | MCP — avoids duplication |
+| Multiple data sources | MCP — one standard interface |
+| Want tools in Claude Desktop / Cursor too | MCP — works out of the box |
+
+MCP is an **infrastructure investment** that pays off at scale, not for a single agent talking to a single backend.
+
+---
+
 ## When to Add MCP
 
 | Situation | Use MCP? |
