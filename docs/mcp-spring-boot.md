@@ -39,7 +39,7 @@ standard format any MCP-compatible agent can connect to.
 |-------------|---------|---------|
 | **Resource** | Read-only data (GET) | Product list, order history |
 | **Tool** | Action with side effects (POST/PATCH) | Place order, cancel order |
-| **Prompt** | Reusable prompt template | (not used here) |
+| **Prompt** | Reusable prompt template | Summarise orders, recommend products |
 
 The Spring Boot API has both — read endpoints (products, weather) and write endpoints
 (create order, cancel order). These map cleanly onto MCP resources and tools.
@@ -199,6 +199,130 @@ def create_product(name: str, price: float, category: str) -> dict:
 if __name__ == "__main__":
     mcp.run()
 ```
+
+---
+
+## MCP Prompts
+
+Prompts are reusable message templates the MCP server pre-defines. The agent (or any
+MCP client like Claude Desktop) can request them by name, optionally passing arguments,
+and the server fills in the template and returns ready-to-use messages.
+
+**When are they useful?**
+- You have a complex, multi-step query you want to standardise
+- You want consistent phrasing for recurring tasks (daily reports, summaries)
+- You want to guide the LLM with curated context without repeating it in every request
+
+**Three examples for this project:**
+
+### 1. Summarise all orders for a customer
+
+The agent needs to fetch all orders, filter by customer, and format a summary.
+Rather than leaving the LLM to figure out the phrasing each time, a prompt
+packages this as a standard request.
+
+```python
+from mcp.server.fastmcp import FastMCP
+from mcp.types import PromptMessage, TextContent
+import httpx
+
+mcp = FastMCP("store-mcp-server")
+
+@mcp.prompt()
+def customer_order_summary(customer_name: str) -> list[PromptMessage]:
+    """Generate a prompt asking the agent to summarise orders for a customer."""
+    orders = httpx.get("http://localhost:8080/api/orders").json()
+    customer_orders = [o for o in orders if o["customerName"] == customer_name]
+
+    return [
+        PromptMessage(
+            role="user",
+            content=TextContent(
+                type="text",
+                text=(
+                    f"Here are all orders placed by {customer_name}:\n\n"
+                    f"{customer_orders}\n\n"
+                    f"Please summarise: total orders, total spend, and most recent order."
+                ),
+            ),
+        )
+    ]
+```
+
+When invoked, the server fetches the live order data and injects it into the prompt
+before handing it to the LLM — the LLM receives a fully populated message, not a
+template with blanks.
+
+---
+
+### 2. Product recommendation by category
+
+Fetches the current product list and asks the LLM to recommend the best product
+in a given category based on price.
+
+```python
+@mcp.prompt()
+def recommend_product(category: str, budget: float) -> list[PromptMessage]:
+    """Recommend the best product in a category within a budget."""
+    products = httpx.get(
+        f"http://localhost:8080/api/products/category/{category}"
+    ).json()
+
+    return [
+        PromptMessage(
+            role="user",
+            content=TextContent(
+                type="text",
+                text=(
+                    f"Available {category} products:\n\n{products}\n\n"
+                    f"The customer has a budget of ${budget:.2f}. "
+                    f"Recommend the best option and explain why."
+                ),
+            ),
+        )
+    ]
+```
+
+---
+
+### 3. Daily store report
+
+No arguments — fetches all live data and asks the LLM to produce a full store summary.
+
+```python
+@mcp.prompt()
+def daily_store_report() -> list[PromptMessage]:
+    """Generate a daily report prompt with live products and orders."""
+    products = httpx.get("http://localhost:8080/api/products").json()
+    orders = httpx.get("http://localhost:8080/api/orders").json()
+
+    return [
+        PromptMessage(
+            role="user",
+            content=TextContent(
+                type="text",
+                text=(
+                    f"Store snapshot as of today:\n\n"
+                    f"Products ({len(products)} total):\n{products}\n\n"
+                    f"Orders ({len(orders)} total):\n{orders}\n\n"
+                    f"Please produce a daily report covering: total revenue, "
+                    f"best-selling product, and any low-stock items (quantity < 5)."
+                ),
+            ),
+        )
+    ]
+```
+
+---
+
+### Key difference: Prompt vs Tool vs Resource
+
+| | Resource | Tool | Prompt |
+|---|---|---|---|
+| **Returns** | Raw data | Action result | Ready-to-send LLM message |
+| **LLM involvement** | LLM reads data and decides what to do | LLM decides to call it | LLM receives a pre-built message |
+| **Use case** | "Give me the products list" | "Place this order" | "Give me a filled-in question I can send to the LLM" |
+| **Who fills in data** | MCP client reads it | Tool executes it | MCP server injects live data into the template |
 
 ---
 
