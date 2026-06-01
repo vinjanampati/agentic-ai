@@ -1,5 +1,35 @@
 # Exposing Spring Boot as an MCP Server
 
+## Does the MCP Server Have to Be a Separate Python Service?
+
+No — neither requirement is true.
+
+**Language:** The MCP server can be written in any language with an official SDK:
+
+| Language | SDK | Maturity |
+|---|---|---|
+| Python | `mcp[cli]` | Most mature, most examples |
+| TypeScript / Node | `@modelcontextprotocol/sdk` | Also very mature |
+| **Java / Kotlin** | `io.modelcontextprotocol:sdk` | Official SDK, works with Spring Boot |
+
+**Separate service:** You have two options:
+
+| Option | Description | Tradeoff |
+|---|---|---|
+| **A — Separate MCP server** | A new process wrapping Spring Boot | Spring Boot unchanged, but extra hop |
+| **B — Embed MCP in Spring Boot** | Spring Boot exposes both REST and MCP | One less service, MCP lives next to business logic |
+
+**Option B is the cleaner approach for this project.** You add the MCP SDK to
+`pom.xml` and annotate your existing Spring controllers or services. The same
+Spring Boot app serves both REST (`:8080`) and MCP on the same port.
+
+```
+Option A:  Agent → MCP Server (new process) → Spring Boot
+Option B:  Agent → Spring Boot (which IS the MCP server)
+```
+
+---
+
 ## What is an MCP Server?
 
 An MCP server is a lightweight service that exposes **resources** and **tools** in a
